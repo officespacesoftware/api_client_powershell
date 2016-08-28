@@ -1,4 +1,4 @@
-﻿$baseURL = "https://xxxxxxxxxxx.officespacesoftware.com";
+$baseURL = "https://xxxxxxxxxxx.officespacesoftware.com";
 $apiGetEmployees = "/api/1/employees";
 $apiGetSeats = "/api/1/seats";
 $apiGetDirectories = "/api/1/directories";
@@ -6,7 +6,7 @@ $apiGetSites = "/api/1/sites";
 $apiGetFloors = "/api/1/floors";
 $apiToken = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 $authorizationHeader = @{"Authorization"="Token token="+$apiToken};
-$dateTime = Get-Date -UFormat "%Y%m%d"
+$dateTime = Get-Date -UFormat "%Y%m%d_%H%m%S"
 
 $outputPath = "C:\users\ashkon\desktop\"
 $outputFile = "OfficeSpace_Employee_Seating_$($dateTime).csv"
