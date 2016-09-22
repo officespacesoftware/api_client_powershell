@@ -90,10 +90,15 @@ ForEach($employee in $employees){
          ($directoryFilter.Contains($floorsMap.get_item(($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url)).directories[0]))
         ) {
 		
-		#Get the employee's seat's label
-		$employee.seat = $seatsMap.get_item($employee.seating.seat_urls[0]).label;
+	#Get the employee's seat's label
+	$employee.seat = $seatsMap.get_item($employee.seating.seat_urls[0]).label;
         $employee.floor = $floorsMap.get_item($seat.floor_url).label;
-        $employee.site = $sitesMap.get_item($floor.site_id).name;
+        if ($floor.site_id) {
+            $employee.site = $sitesMap.get_item($floor.site_id).name;
+        }
+        else {
+            $employee.site = ""
+        }
         $employee.directory = $directoriesMap.get_item($floorsMap.get_item(($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url)).directories[0]).name
 	}
 		
