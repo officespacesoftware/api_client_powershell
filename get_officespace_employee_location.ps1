@@ -92,9 +92,9 @@ ForEach($employee in $employees){
 		
 	#Get the employee's seat's label
 	$employee.seat = $seatsMap.get_item($employee.seating.seat_urls[0]).label;
-        $employee.floor = $floorsMap.get_item($seat.floor_url).label;
-        if ($floor.site_id) {
-            $employee.site = $sitesMap.get_item($floor.site_id).name;
+        $employee.floor = $floorsMap.get_item($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url).label;
+        if ($floorsMap.get_item($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url).site_id) {
+            $employee.site = $sitesMap.get_item($floorsMap.get_item($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url).site_id).name;
         }
         else {
             $employee.site = ""
