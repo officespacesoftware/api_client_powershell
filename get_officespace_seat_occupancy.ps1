@@ -10,6 +10,7 @@ $dateTime = Get-Date -UFormat "%Y%m%d_%H%m%S"
 
 $outputPath = "C:\users\ashkon\desktop\"
 $outputFile = "OfficeSpace_Seat_Occupancy_$($dateTime).csv"
+$outputDelimiter = ","
 
 ################################################################
 # SYS: Make Public and SYS: Make Private are two special system
@@ -108,4 +109,4 @@ ForEach($seat in $seats){
     		
 }
 
-$seatsToReturn | Export-Csv -Path "$($outputPath)\$($outputFile)"
+$seatsToReturn | Export-Csv -Delimiter $outputDelimiter -Path "$($outputPath)\$($outputFile)"
