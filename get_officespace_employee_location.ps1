@@ -83,25 +83,33 @@ ForEach($employee in $employees){
     $employee | Add-Member -Name directory -Value "" -MemberType NoteProperty
 
 
-	
-	#If the employee is seated in a directory that we listed in $directoriesToInclude variable
-	if ( ($employee.seating.seated -ne "not seated") -and 
-         ($employee.seating.seat_urls.length -gt 0) -and 
-         ($directoryFilter.Contains($floorsMap.get_item(($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url)).directories[0]))
+    #If the employee is seated
+    if ( ($employee.seating.seated -ne "not seated") -and 
+         ($employee.seating.seat_urls.length -gt 0)
         ) {
-		
-	#Get the employee's seat's label
-	$employee.seat = $seatsMap.get_item($employee.seating.seat_urls[0]).label;
-        $employee.floor = $floorsMap.get_item($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url).label;
-        if ($floorsMap.get_item($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url).site_id) {
-            $employee.site = $sitesMap.get_item($floorsMap.get_item($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url).site_id).name;
+
+        $employee_seat = $null
+
+        #And if at least one seat is in a directory that we listed in $directoriesToInclude variable
+        ForEach($seat_url in $employee.seating.seat_urls){
+            if ($directoryFilter.Contains($floorsMap.get_item(($seatsMap.get_item($seat_url).floor_url)).directories[0])){
+                
+                $employee_seat = $seatsMap.get_item($seat_url)
+
+                #Get the employee's seat's label
+                $employee.seat = $employee_seat.label;
+                $employee.floor = $floorsMap.get_item($employee_seat.floor_url).label;
+                if ($floorsMap.get_item($employee_seat.floor_url).site_id) {
+                    $employee.site = $sitesMap.get_item($floorsMap.get_item($employee_seat.floor_url).site_id).name;
+                }
+                else {
+                    $employee.site = ""
+                }
+                $employee.directory = $directoriesMap.get_item($floorsMap.get_item(($employee_seat.floor_url)).directories[0]).name
+            }
         }
-        else {
-            $employee.site = ""
-        }
-        $employee.directory = $directoriesMap.get_item($floorsMap.get_item(($seatsMap.get_item($employee.seating.seat_urls[0]).floor_url)).directories[0]).name
-	}
-		
+    }
+			
 }
 
-$employees | Export-Csv -Path "$($outputPath)\$($outputFile)"
+$employees | Export-Csv -Path "$($outputPath)\$($outputFile)" -NoTypeInformation
