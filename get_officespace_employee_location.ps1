@@ -8,7 +8,7 @@ $apiToken = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 $authorizationHeader = @{"Authorization"="Token token="+$apiToken};
 $dateTime = Get-Date -UFormat "%Y%m%d_%H%m%S"
 
-$outputPath = "C:\users\ashkon\desktop\"
+$outputPath = "$($env:userprofile)\desktop\"
 $outputFile = "OfficeSpace_Employee_Seating_$($dateTime).csv"
 
 ################################################################
