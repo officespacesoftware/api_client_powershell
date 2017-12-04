@@ -2,8 +2,6 @@
 $protocol      = "https://"
 $headers       = @{Authorization = "Token token="+$token}
 $hostname      = "xxxxxxxxxxxxx.officespacesoftware.com"
-$filter        = "(objectClass=user)"
-$oudns         = "DC=officespacesoftware,DC=com";
 $baseURL       = $protocol+$hostname;
 $apiGetEmployees = "/api/1/employees";
 $apiPutEmployees = "/api/1/employees/"
