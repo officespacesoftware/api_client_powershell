@@ -109,4 +109,4 @@ ForEach($seat in $seats){
     		
 }
 
-$seatsToReturn | Export-Csv -Delimiter $outputDelimiter -Path "$($outputPath)\$($outputFile)"
+$seatsToReturn | Export-Csv -NoTypeInformation -Delimiter $outputDelimiter -Path "$($outputPath)\$($outputFile)"
