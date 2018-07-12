@@ -1,15 +1,21 @@
 $baseURL = "https://xxxxxxxxxxx.officespacesoftware.com";
+$apiToken = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
+
 $apiGetEmployees = "/api/1/employees";
 $apiGetSeats = "/api/1/seats";
 $apiGetDirectories = "/api/1/directories";
 $apiGetSites = "/api/1/sites";
 $apiGetFloors = "/api/1/floors";
-$apiToken = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx";
 $authorizationHeader = @{"Authorization"="Token token="+$apiToken};
+
 $dateTime = Get-Date -UFormat "%Y%m%d_%H%m%S"
 
 $outputPath = "$($env:userprofile)\desktop\"
-$outputFile = "OfficeSpace_Employee_Seating_$($dateTime).csv"
+$outputFile = "OfficeSpace_Seat_Occupancy_$($dateTime).csv"
+$outputDelimiter = ","
+
+#Force TLS 1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
 ################################################################
 # SYS: Make Public and SYS: Make Private are two special system
@@ -93,7 +99,7 @@ ForEach($employee in $employees){
         #And if at least one seat is in a directory that we listed in $directoriesToInclude variable
         ForEach($seat_url in $employee.seating.seat_urls){
             if ($directoryFilter.Contains($floorsMap.get_item(($seatsMap.get_item($seat_url).floor_url)).directories[0])){
-                
+
                 $employee_seat = $seatsMap.get_item($seat_url)
 
                 #Get the employee's seat's label
@@ -109,7 +115,7 @@ ForEach($employee in $employees){
             }
         }
     }
-			
+
 }
 
-$employees | Export-Csv -Path "$($outputPath)\$($outputFile)" -NoTypeInformation
+$employees | Export-Csv -Delimiter $outputDelimiter -Path "$($outputPath)\$($outputFile)" -NoTypeInformation
