@@ -12,6 +12,9 @@ $outputPath = "$($env:userprofile)\desktop\"
 $outputFile = "OfficeSpace_Seat_Occupancy_$($dateTime).csv"
 $outputDelimiter = ","
 
+#Force TLS 1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
 ################################################################
 # SYS: Make Public and SYS: Make Private are two special system
 # directories that always exists and that describe the online and
@@ -61,7 +64,7 @@ ForEach($floor in $floors){
 
 Write-Output "Found $($floors.Count) FLOORS"
 
-#Get all the seats and put them in a hashmap 
+#Get all the seats and put them in a hashmap
 $seats = (Invoke-RestMethod -Uri $baseURL$apiGetSeats -Method get -Headers $authorizationHeader).response;
 $seatsMap = @{};
 ForEach($seat in $seats){
@@ -106,7 +109,7 @@ ForEach($seat in $seats){
 
         $seatsToReturn += $seatToReturn
     }
-    		
+
 }
 
 $seatsToReturn | Export-Csv -NoTypeInformation -Delimiter $outputDelimiter -Path "$($outputPath)\$($outputFile)"
