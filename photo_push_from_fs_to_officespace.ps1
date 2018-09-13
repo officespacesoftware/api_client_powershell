@@ -1,4 +1,6 @@
-﻿$token         = "xxxxxxxxxxxxxxxxxxxxxx"
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+$token         = "xxxxxxxxxxxxxxxxxxxxxx"
 $protocol      = "https://"
 $headers       = @{Authorization = "Token token="+$token}
 $hostname      = "xxxxxxxxxxxxx.officespacesoftware.com"
@@ -59,7 +61,7 @@ function Test-Image { # This function was copied from https://blogs.technet.micr
 }
 
 #Get all the active employees from OfficeSpace and put them in a hash map
-$employees = (Invoke-RestMethod -Uri $baseURL$apiGetEmployees -Method get -Headers $headers).response;
+$employees = (Invoke-RestMethod -UseBasicParsing -Uri $baseURL$apiGetEmployees -Method get -Headers $headers).response;
 $employeeMap = @{};
 ForEach($employee in $employees){
     $employeeMap.add($employee.client_employee_id, $employee);
@@ -122,7 +124,7 @@ do
                     $JSONrequest = $request | ConvertTo-Json
 
                     Write-Host "Updating photo for user: " $employee.client_employee_id;
-                    Invoke-WebRequest -Uri $baseURL$apiPutEmployees$empId -ContentType 'application/json; charset=utf-8' -Method PUT -Body $JSONrequest -Headers $headers -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
+                    Invoke-WebRequest -UseBasicParsing -Uri $baseURL$apiPutEmployees$empId -ContentType 'application/json; charset=utf-8' -Method PUT -Body $JSONrequest -Headers $headers -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
 
                 } #end of if the md5 hashes did not match
 
