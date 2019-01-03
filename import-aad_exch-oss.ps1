@@ -26,6 +26,7 @@ $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
 $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
+$version                    = 1
 ######################
 
 # Get nickname from display name
@@ -130,6 +131,7 @@ $Udf24 = ""
 
 # Start logging stdout and stderr to file
 Start-Transcript -Path "$logFile"
+Write-Host "Script version $version start"
 if ($supportedPhotoSources -contains $photoSource) {
     Write-Host "photoSource: $photoSource"
 } else {
@@ -148,7 +150,7 @@ Try {
     $r = (Invoke-RestMethod -Uri $ossGetEmployeesUrl -Method Get -Headers $ossHeaders)
     $ossCount = $r.Count
     $arrayCount = $r.Response.Count
-} catch [System.ArgumentException] {
+} Catch [System.ArgumentException] {
     Write-Host "FAIL"
     Write-Host "  NOTICE: Your PowerShell environment may not support parsing larger JSON data sets."
     Write-Host "  Switching to Invoke-WebRequest..."
@@ -162,11 +164,11 @@ Try {
     $r = $jsonSerial.DeserializeObject($w.Content)
     $ossCount = $r.count
     $arrayCount = $r.response.count
-} catch {
+} Catch {
     Write-Host "General exception caught: $_.Exception.Message"
     Stop-Transcript
     Exit 2
-} finally {
+} Finally {
     Write-Host "debug: ossCount: $ossCount  arrayCount: $arrayCount"
 }
 
