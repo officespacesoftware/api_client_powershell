@@ -4,12 +4,12 @@
 $azureUsername   = "oss_service@mycompany.com"             # user with Azure AD access
 $credsFile       = "C:\ps\oss_service.creds"               # encrypted user credentials file
 $logFile         = "C:\ps\oss_import.txt"                  # log file
-$photoSource     = "azuread"                               # source for photos: azuread, exchange, exchange-azuread, none
+$photoSource     = "exchange-azuread"                      # source for photos: azuread, exchange, exchange-azuread, none
 $photosDir       = "C:\ps\photos"                          # directory to download thumbnail photos
                                                            #    (only used if $photoSource = 'azuread' or 'exchange-azuread')
 $ossToken        = "123456789abcef0f1d7161a7f1809f80"      # OfficeSpace API key
 $ossHostname     = "mycompany.officespacesoftware.com"     # OfficeSpace instance hostname
-$tryNicknames    = $true                                   # look at displayName for possible preferred name
+$tryNicknames    = $false                                  # look at displayName for possible preferred name
 $importThreshold = 60                                      # minimum percentage of import count compared to existing OSS record count
                                                            #   If the user count to import is less than this threshold %, don't import.
 
