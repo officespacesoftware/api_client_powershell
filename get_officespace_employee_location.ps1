@@ -21,6 +21,7 @@ $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
 $ossGetFloorsUrl            = $ossProtocol + $ossHostname + $ossFloorsUrl
 $ossGetSeatsUrl             = $ossProtocol + $ossHostname + $ossSeatsUrl
 $ossGetSitesUrl             = $ossProtocol + $ossHostname + $ossSitesUrl
+$version                    = 1
 ######################
 
 # Test JSON data set capability
