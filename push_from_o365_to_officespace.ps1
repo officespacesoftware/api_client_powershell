@@ -296,6 +296,7 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
     if ($photoSource.Contains('exchange')) {
         if ($exchangePhoto.$userId -eq $true) {
              $photo = Get-UserPhoto -Identity $userId
+             $imageDataRaw = ""
              $imageDataRaw = $photo.PictureData
              if ($imageDataRaw -ne "") {
                  $photosFound++
