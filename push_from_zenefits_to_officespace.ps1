@@ -29,6 +29,7 @@ $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
 $zenefitsHeaders            = @{Authorization = "Bearer " + $zenefitsApiKey}
+$version                    = 1
 ######################
 
 # Get nickname from display name
@@ -83,6 +84,7 @@ function Test-Json {
 
 # Capture the start time of script
 $startTime = Get-Date
+Write-Host "Script version $version start"
 
 # Force the use of TLS 1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
