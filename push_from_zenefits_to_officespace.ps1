@@ -29,7 +29,7 @@ $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
 $zenefitsHeaders            = @{Authorization = "Bearer " + $zenefitsApiKey}
-$version                    = 1
+$version                    = 2
 ######################
 
 # Get nickname from display name
@@ -298,7 +298,12 @@ for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
              $photoFile = $photosDir + '\' + $userId + '.png'
              Invoke-WebRequest $u.photo_thumbnail_url -OutFile $photoFile
              $photoMd5 = Get-FileHash -Path $($photoFile) -Algorithm MD5
-             $imageDataRaw = Get-Content -Raw $photoFile -Encoding byte
+             # Subtle difference if using PSCore
+             if ($PSEdition -eq 'Core') {
+                 $imageDataRaw = Get-Content -Raw $photoFile -AsByteStream
+             }
+                 $imageDataRaw = Get-Content -Raw $photoFile -Encoding Byte
+             }
              $imageDataBase64 = [System.Convert]::ToBase64String($imageDataRaw)
              $ossUser.Set_Item("PhotoMd5", $photoMd5.Hash)
              $ossUser.Set_Item("ImageData", $imageDataBase64)
