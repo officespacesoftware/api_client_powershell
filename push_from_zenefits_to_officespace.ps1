@@ -1,24 +1,26 @@
 ###############
 # User config
 ###############
-$azureUsername   = "oss_service@mycompany.com"             # user with Azure AD access
-$credsFile       = "C:\ps\oss_service.creds"               # encrypted user credentials file
-$logFile         = "C:\ps\oss_import.txt"                  # log file
-$photoSource     = "exchange-azuread"                      # source for photos: azuread, exchange, exchange-azuread, none
-$photosDir       = "C:\ps\photos"                          # directory to download thumbnail photos
-                                                           #    (only used if $photoSource = 'azuread' or 'exchange-azuread')
-$ossToken        = "123456789abcef0f1d7161a7f1809f80"      # OfficeSpace API key
-$ossHostname     = "mycompany.officespacesoftware.com"     # OfficeSpace instance hostname
-$tryNicknames    = $false                                  # look at displayName for possible preferred name
-$importThreshold = 60                                      # minimum percentage of import count compared to existing OSS record count
-                                                           #   If the user count to import is less than this threshold %, don't import.
+# According to Zenefits (https://developers.zenefits.com/docs/pagination), their service will return 20 records at a time, by default.
+# You can control this by adding the parameter "limit=xx". The maximum value allowed is 100.
+# Example: Return 50 people records at a time: https://api.zenefits.com/core/people?limit=50
+$zenefitsPeopleUrl      = "https://api.zenefits.com/core/people?includes=department"    # Zenefits URL to access people data and department info
+$zenefitsApiKey         = "zenefitsApiKey123456"                                        # Zenefits API key
+$logFile                = "C:\ps\oss_import.txt"                                        # log file
+$photoSource            = "zenefits"                                                    # source for photos: zenefits, none  [none=don't use zenefits for user photos]
+$photosDir              = "C:\ps\photos2"                                               # directory to download thumbnail photos
+$ossApiKey              = "0123456789abcdef1011121314151617"                            # OfficeSpace API key
+$ossHostname            = "mycompany.officespacesoftware.com"                           # OfficeSpace instance hostname
+$tryNicknames           = $false                                                        # when $true, use preferred name over first name
+$importThreshold        = 60                                                            # minimum percentage of import count compared to existing OSS record count
+                                                                                        #   If the user count to import is less than this threshold %, don't import.
 
 ######################
-$source                     = "AzureAD"
+$source                     = "Zenefits"                                                # Source of user data for OSS import
 $batchSize                  = 300
-$supportedPhotoSources      = @( 'azuread', 'exchange', 'exchange-azuread', 'none' )
+$supportedPhotoSources      = @( 'none', 'zenefits' )
 $ossProtocol                = "https://"
-$ossHeaders                 = @{Authorization = "Token token=" + $ossToken}
+$ossHeaders                 = @{Authorization = "Token token=" + $ossApiKey}
 $ossBatchUrl                = "/api/1/employee_batch_imports"
 $ossImportUrl               = "/api/1/employee_directory"
 $ossEmployeesUrl            = "/api/1/employees"
@@ -26,7 +28,8 @@ $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
 $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
-$version                    = 1
+$zenefitsHeaders            = @{Authorization = "Bearer " + $zenefitsApiKey}
+$version                    = 2
 ######################
 
 # Get nickname from display name
@@ -58,55 +61,72 @@ function Get-Nickname {
         return $givenName
     }
 }
+
+# Test JSON data set capability
+function Test-Json {
+    Write-Host -NoNewLine "Test JSON parsing performance: "
+    Try {
+        "a" * 2mb | ConvertTo-Json | ConvertFrom-Json | Out-Null
+        Write-Host "PASS"
+        return $true
+    } catch [System.ArgumentException] {
+        Write-Host "FAIL"
+        Write-Host "NOTICE: Your PowerShell environment may not support parsing larger JSON data sets."
+        return $false
+    } catch {
+        Write-Host "Test-Json() General exception caught: $_.Exception.Message"
+        Stop-Transcript
+        Exit 2
+    }
+}
+
 ######################
 
 # Capture the start time of script
 $startTime = Get-Date
+Write-Host "Script version $version start"
 
 # Force the use of TLS 1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
-# Azure AD User object fields to collect
-$azureUserFields = @(
-    'Department',
-    'DisplayName',
-    'GivenName',
-    'JobTitle',
-    'Mobile',
-    'Surname',
-    'TelephoneNumber',
-    'UserPrincipalName'
+# Zenefits User object fields to collect
+$zenefitsUserFields = @(
+    'id',
+    'first_name',
+    'last_name',
+    'personal_phone',
+    'title',
+    'work_email',
+    'work_phone'
 )
 
-# Azure AD Manager fields to collect
-$azureManagerFields = @(
-    'DisplayName',
-    'GivenName',
-    'Surname',
-    'UserPrincipalName'
+# Zenefits Manager fields to collect
+$zenefitsManagerFields = @(
+    'last_name',
+    'work_email'
 )
 
 ########################################################
-# OfficeSpace <-> Azure AD attribute attribute mapping
+# OfficeSpace <-> Zenefits attribute attribute mapping
 ########################################################
-$EmployeeId = "UserPrincipalName"  # UPN is unique and easy to recongize. There is also a unique objectId.
-$FirstName = "PrefName"            # PrefName = GivenName. PrefName can update if $tryNicknames.
-$LastName = "Surname"
-$Title = "JobTitle"
-$WorkPhone = "TelephoneNumber"
+$EmployeeId = "id"                   # Employee ID number
+$FirstName = "first_name"
+$LastName = "last_name"
+$Title = "title"
+$WorkPhone = "work_phone"
 $Extension = ""
 $ImageData = "ImageData"
-$Department = "Department"
+$Department = "department"
 $Bio = ""
-$Email = "UserPrincipalName"
+$Email = "work_email"
 $StartDate = ""
 $EndDate = ""
 $ShowInVd = "" 
-$Udf0 = "Mobile"                   # User's mobile number
-$Udf1 = "ManagerUserPrincipalName" # Manager's email
-$Udf2 = "ManagerPrefName"          # Manager's Given/first name. ManagerPrefName can update if $tryNicknames.
-$Udf3 = "ManagerSurname"           # Manager's surname/last name
-$Udf4 = ""
+$Udf0 = "personal_phone"             # User's personal phone number
+$Udf1 = "manager_work_email"         # Manager's email
+$Udf2 = "manager_pref_name"          # Manager's Given/first name. ManagerPrefName can update if $tryNicknames.
+$Udf3 = "manager_last_name"          # Manager's surname/last name
+$Udf4 = "PhotoMd5"
 $Udf5 = ""
 $Udf6 = ""
 $Udf7 = ""
@@ -131,7 +151,6 @@ $Udf24 = ""
 
 # Start logging stdout and stderr to file
 Start-Transcript -Path "$logFile"
-Write-Host "Script version $version start"
 if ($supportedPhotoSources -contains $photoSource) {
     Write-Host "photoSource: $photoSource"
 } else {
@@ -140,20 +159,16 @@ if ($supportedPhotoSources -contains $photoSource) {
     Exit 2
 }
 Write-Host "tryNicknames: $tryNicknames"
+$jsonOk = Test-Json
 
 # Connect to OfficSpace to get count of existing records.
 Write-Host "Communicating with OfficeSpace to get count of existing employee records..."
-Try {
-    Write-Host -NoNewLine "  Test JSON parsing performance: "
-    "a" * 2mb | ConvertTo-Json | ConvertFrom-Json | Out-Null
-    Write-Host "PASS"
+if ($jsonOk) {
     $r = (Invoke-RestMethod -Uri $ossGetEmployeesUrl -Method Get -Headers $ossHeaders)
     $ossCount = $r.Count
     $arrayCount = $r.Response.Count
-} Catch [System.ArgumentException] {
-    Write-Host "FAIL"
-    Write-Host "  NOTICE: Your PowerShell environment may not support parsing larger JSON data sets."
-    Write-Host "  Switching to Invoke-WebRequest..."
+} else {
+    Write-Host "Using Invoke-WebRequest..."
     $w = (Invoke-WebRequest -Uri $ossGetEmployeesUrl -UseBasicParsing -Method Get -Headers $ossHeaders)
     $rawContentLength = $w.RawContentLength
     Write-Host "debug: raw content length: $rawContentLength"
@@ -164,13 +179,8 @@ Try {
     $r = $jsonSerial.DeserializeObject($w.Content)
     $ossCount = $r.count
     $arrayCount = $r.response.count
-} Catch {
-    Write-Host "General exception caught: $_.Exception.Message"
-    Stop-Transcript
-    Exit 2
-} Finally {
-    Write-Host "debug: ossCount: $ossCount  arrayCount: $arrayCount"
 }
+Write-Host "debug: ossCount: $ossCount  arrayCount: $arrayCount"
 
 if ($ossCount -ne $arrayCount) {
     Write-Host "Count mismatch when querying OfficeSpace! Exiting."
@@ -180,77 +190,63 @@ if ($ossCount -ne $arrayCount) {
 $ossCurrentUserCount = $ossCount
 Write-Host "$ossCurrentUserCount existing OfficeSpace records"
 
-# AzureAD
-Import-Module AzureAD
-$azureadModuleInfo = Get-Module AzureAD
-Write-Host "AzureAD module version: $($azureadModuleInfo.Version)"
-
-$azurePassword = gc $credsFile
-$azurePassword = ConvertTo-SecureString $azurePassword -Force
-$azureCredential = New-Object System.Management.Automation.PSCredential -ArgumentList $azureUsername,$azurePassword
-
-# Connect to AzureAD using supplied credentials
-Write-Host "Connecting to AzureAD..."
-Try {
-    Connect-AzureAD -Credential $azureCredential | Out-Null
-} Catch {
-    Write-Host "Problem connecting to Azure AD. Exiting..."
-    Stop-Transcript
-    Exit 2
+# Initialize arrays to store the Zenefits users and departments
+$zenefitsUsers = @()
+$zenefitsDepts = @()
+# Communicate with Zenefits
+Write-Host "Connecting to Zenefits..."
+# Get Users
+$getZenefitsUsers = $true
+$zenefitsUrl = $zenefitsPeopleUrl
+while ($getZenefitsUsers) {
+    Try {
+        # To see the URL we are fetching: Write-Host "debug: zenefitsUrl = $zenefitsUrl"
+        $z = (Invoke-RestMethod -Uri $zenefitsUrl -Method Get -Headers $zenefitsHeaders)
+        $zenefitsUsers += $z.data.data
+        # if 'next_url' contains a value, there's more data available.
+        if ($z.data.next_url) {
+            $zenefitsUrl = $z.data.next_url
+        } else {
+            $getZenefitsUsers = $false
+        }
+    } Catch {
+        Write-Host "Problem connecting to Zenefits. Exiting..."
+        Stop-Transcript
+        Exit 2
+    }
 }
-
-Write-Host "Getting Azure AD users..."
-# Get an array of Azure AD User objects (filtering out disabled accounts)
-$azureUsers = Get-AzureADUser -All $true -Filter "AccountEnabled eq true"
-$azureUserCount = $azureUsers.Count
-Write-Host "$azureUserCount AzureAD user objects returned"
-# Exit script if no user objects were returned
-if ($azureUsers.Count -eq 0) {
+$zenefitsUserCount = $zenefitsUsers.Count
+Write-Host "$zenefitsUserCount Zenefits users returned"
+# Exit script if no users were returned
+if ($zenefitsUsers.Count -eq 0) {
     Stop-Transcript
     Exit
 }
 
-# Connect to Exchange if we are sourcing photos from there
-if ($photoSource.Contains('exchange')) {
-    Write-Host "Connecting to Exchange..."
-    $exchangeSession = New-PSSession -ConfigurationName Microsoft.Exchange -ConnectionUri https://outlook.office365.com/powershell-liveid/ -Credential $azureCredential -Authentication Basic -AllowRedirection
-    Import-PSSession $exchangeSession -DisableNameChecking | Out-Null
-    Write-Host "Getting user mailboxes..."
-    # Get an array of Exchange user mailboxes
-    $userMailboxes = Get-Mailbox -RecipientTypeDetails UserMailbox -ResultSize Unlimited | select UserPrincipalName,HasPicture
-    Write-Host "$($userMailboxes.Count) Exchange user mailboxes returned"
-    $exchangePhoto = @{}
-    # Store whether there is a picture associated with the mailbox
-    foreach ($userMailbox in $userMailboxes) {
-        $exchangePhoto.Add($userMailbox.UserPrincipalName, $userMailbox.HasPicture)
-    }
-}
-
 # Create photos directory if needed
-if ($photoSource.Contains('azuread') -and !(Test-Path $photosDir)) {
+if ($photoSource.Contains('zenefits') -and !(Test-Path $photosDir)) {
     New-Item -Path $photosDir -ItemType Directory | Out-Null
     Write-Host "Created photosDir: $photosDir"
 }
 
-# Build an array from the Azure AD Users that we can modify
+# Build an array from the Zenefits Users that we can modify
 $ossUsersArray = New-Object System.Collections.ArrayList
 
 $mgrsFound         = 0
 $photosFound       = 0
-$photosAzureAD     = 0
-$photosExchange    = 0
 $nicknamesAssigned = 0
 $usersSkipped      = @()
 Write-Host "Inspecting users..."
-for ($counter = 1; $counter -le $azureUserCount; $counter++) {
+
+for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
     # OSS user hash table
     $ossUser = @{}
-    $u = $azureUsers[$counter - 1]
-    $userId = $u.UserPrincipalName
-    Write-Host "-> $userId  [$counter/$azureUserCount]"
+    $u = $zenefitsUsers[$counter - 1]
+    $userId = $u.id
+    Write-Host "-> ${userId}:$($u.first_name) $($u.last_name) [$counter/$zenefitsUserCount]"
     
     # Skip if user has no last name
-    if ($u.Surname -eq $null) {
+    if ($u.last_name -eq $null) {
         Write-Host "    (no last name, skipping)"
         $usersSkipped += $userId
         continue
@@ -258,78 +254,59 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
 
     # Try to look for nickname
     if ($tryNicknames) {
-        $ossUser.PrefName = Get-Nickname -givenName $u.GivenName -displayName $u.DisplayName -objType "user"
+        $ossUser.pref_name = Get-Nickname -givenName $u.first_name -displayName ($u.preferred_name + " " + $u.last_name) -objType "user"
     } else {
-        $ossUser.Add("PrefName", $u.GivenName)
+        $ossUser.Add("pref_name", $u.first_name)
     }
-    # Skip if user has no PrefName
-    if ($ossUser.PrefName -eq $null -Or $ossUser.PrefName -eq "") {
+    # Skip if user has no pref name
+    if ($ossUser.pref_name -eq $null -Or $ossUser.pref_name -eq "") {
         Write-Host "    (no first/pref name, skipping)"
-        $userSkipped += $userId
+        $usersSkipped += $userId
         continue
     }
 
-    foreach ($i in $azureUserFields) {
+    foreach ($i in $zenefitsUserFields) {
         $ossUser.Add($i, $u.$i)
     }
     
+    # Fetch department info and add it to the user
+    $ossUser.Add("department", $u.department.name)
+
     # Fetch manager info and add it to the user
-    $mgr = Get-AzureADUserManager -ObjectId $userId
+    $mgr = $zenefitsUsers | Where-Object url -eq $u.manager.url
     if ($mgr -ne $null) {
         $mgrsFound++
         Write-Host "    (has manager)"
         # Check if we should use manager nickname
         if ($tryNicknames) {
-            $ossUser.ManagerPrefName = Get-Nickname -givenName $mgr.GivenName -displayName $mgr.DisplayName -objType "manager"
+            $ossUser.manager_pref_name = Get-Nickname -givenName $mgr.first_name -displayName ($mgr.preferred_name + " " + $mgr.last_name) -objType "manager"
         } else {
-            $ossUser.Add("ManagerPrefName", $mgr.GivenName)
+            $ossUser.Add("manager_pref_name", $mgr.first_name)
         }
     } 
-    foreach ($i in $azureManagerFields) {
-        $ossUser.Add("Manager" + $i, $mgr.$i)
+    foreach ($i in $zenefitsManagerFields) {
+        $ossUser.Add("manager_" + $i, $mgr.$i)
     }
 
     # Fetch thumbnail photo and add it to the OSS user
     $ossUser.Add("PhotoMd5", $null)
     $ossUser.Add("ImageData", $null)
-    $checkAzureForPhoto = $false
-    if ($photoSource.Contains('exchange')) {
-        if ($exchangePhoto.$userId -eq $true) {
-             $photo = Get-UserPhoto -Identity $userId
-             $imageDataRaw = ""
-             $imageDataRaw = $photo.PictureData
-             if ($imageDataRaw -ne "") {
-                 $photosFound++
-                 $photosExchange++
-                 Write-Host "    (has photo [exch])"
-                 $md5 = New-Object -TypeName System.Security.Cryptography.MD5CryptoServiceProvider
-                 $md5Hash = [System.BitConverter]::ToString($md5.ComputeHash($imageDataRaw))
-                 $md5Hash = $md5Hash -replace '-',''
-                 $imageDataBase64 = [System.Convert]::ToBase64String($imageDataRaw)
-                 $ossUser.Set_Item("PhotoMd5", $photoMd5.Hash)
-                 $ossUser.Set_Item("ImageData", $imageDataBase64)
+    if ($photoSource.Contains('zenefits')) {
+        if ($u.photo_thumbnail_url) {
+             $photosFound++
+             Write-Host "    (has photo [thumbnail_url])"
+             $photoFile = $photosDir + '\' + $userId + '.png'
+             Invoke-WebRequest $u.photo_thumbnail_url -OutFile $photoFile
+             $photoMd5 = Get-FileHash -Path $($photoFile) -Algorithm MD5
+             # Subtle difference if using PSCore
+             if ($PSEdition -eq 'Core') {
+                 $imageDataRaw = Get-Content -Raw $photoFile -AsByteStream
              }
-        }
-        if ($ossUser.ImageData -eq $null -and $photoSource -eq "exchange-azuread") {
-            $checkAzureForPhoto = $true
-        }
-    }
-    if ($photoSource -eq "azuread" -or $checkAzureForPhoto) {
-        Try {
-            $photoFile = Join-Path -Path $photosDir -ChildPath $userId
-            Get-AzureADUserThumbnailPhoto -ObjectId $userId -FileName $photoFile
-            $photosFound++
-            $photosAzureAD++
-            Write-Host "    (has photo [aad])"
-            # Get-AzureADUserThumbnailPhoto download appends '.jpeg' to the filename
-            $photoFile += '.jpeg'
-            $photoMd5 = Get-FileHash -Path $($photoFile) -Algorithm MD5
-            $imageDataRaw = Get-Content -Raw $photoFile -Encoding byte
-            $imageDataBase64 = [System.Convert]::ToBase64String($imageDataRaw)
-            $ossUser.Set_Item("PhotoMd5", $photoMd5.Hash)
-            $ossUser.Set_Item("ImageData", $imageDataBase64)
-        } Catch {
-            # No photo in AzureAD
+                 $imageDataRaw = Get-Content -Raw $photoFile -Encoding Byte
+             }
+             $imageDataBase64 = [System.Convert]::ToBase64String($imageDataRaw)
+             $ossUser.Set_Item("PhotoMd5", $photoMd5.Hash)
+             $ossUser.Set_Item("ImageData", $imageDataBase64)
         }
     }
 
@@ -337,24 +314,12 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
     $ossUsersArray.Add($ossUser) | Out-Null
 }
 
-if ($photoSource.Contains('exchange')) {
-    # Disconnect the remote PowerShell session
-    Remove-PSSession $exchangeSession -Verbose
-}
-
-# Disconnect the current session from AzureAD tenant
-Disconnect-AzureAD -Verbose
 
 # Stats
-Write-Host "$azureUserCount users inspected"
+Write-Host "$zenefitsUserCount users inspected"
 Write-Host "$mgrsFound manager assignments found"
 if ($photoSource -ne "none") {
-    Write-Host -NoNewLine "$photosFound user photos found"
-    if ($photoSource -eq "exchange-azuread") {
-        Write-Host " ($photosExchange exch, $photosAzureAD aad)"
-    } else {
-        Write-Host
-    }
+    Write-Host "$photosFound user photos found"
 }
 if ($tryNicknames) {
     Write-Host "$nicknamesAssigned nicknames assigned to users"
@@ -362,7 +327,7 @@ if ($tryNicknames) {
 $numUsersSkipped = $usersSkipped.Count
 Write-Host "$numUsersSkipped users skipped"
 if ($numUsersSkipped -gt 0) {
-    Write-Host "Users skipped: $usersSkipped"
+    Write-Host "User ids skipped: $usersSkipped"
 }
 $userCount = $ossUsersArray.Count
 Write-Host "$userCount users to import to OfficeSpace"
