@@ -1,4 +1,7 @@
-﻿$token         = ""
+﻿# Force the use of TLS 1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+
+$token         = ""
 $hostname      = "xxxxxx.officespacesoftware.com"
 $protocol      = "https://"
 $headers       = @{Authorization = "Token token="+$token}
