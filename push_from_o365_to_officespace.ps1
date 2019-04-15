@@ -26,8 +26,65 @@ $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
 $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
-$version                    = 1
+$version                    = 2
 ######################
+
+# Exit the script and stop logging if on
+function Exit-Script {
+    param(
+        [Parameter(Mandatory=$false)] [Int]$Code = 0
+    )
+
+    if ($useLogFile) {
+        Stop-Transcript
+    }
+    Exit $Code
+}
+
+
+# Test JSON data set capability
+function Test-Json {
+    Write-Host -NoNewLine "Test JSON parsing capability: "
+    Try {
+        "a" * 2mb | ConvertTo-Json | ConvertFrom-Json | Out-Null
+        Write-Host "PASS"
+        return $true
+    } catch [System.ArgumentException] {
+        Write-Host "FAIL"
+        Write-Host "NOTICE: Your PowerShell environment may not support parsing larger JSON data sets."
+        return $false
+    } catch {
+        Write-Host "Test-Json() General exception caught: $_.Exception.Message"
+        Stop-Transcript
+        Exit 2
+    }
+}
+
+
+# Get JSON data from URL
+function Get-WebJson {
+    param(
+        [Parameter(Mandatory=$true)]  [String]$Url,
+        [Parameter(Mandatory=$false)] [HashTable]$Headers = @{}
+    )
+
+    if ($jsonOk) {
+        # Invoke-RestMethod
+        $resp = Invoke-RestMethod -Uri $Url -Method Get -Headers $Headers
+    } else {
+        # Invoke-WebRequest
+        $w = Invoke-WebRequest -Uri $Url -UseBasicParsing -Method Get -Headers $Headers
+        $rawContentLength = $w.RawContentLength
+        Write-Host "debug: raw content length: $rawContentLength"
+        [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
+        $jsonSerial = New-Object -TypeName System.Web.Script.Serialization.JavaScriptSerializer
+        # If you set MaxJsonLength to $rawContentLength - 1, you'll hit the error.
+        $jsonSerial.MaxJsonLength  = $rawContentLength
+        $resp = $jsonSerial.DeserializeObject($w.Content)
+    }
+    return $resp
+}
+
 
 # Get nickname from display name
 function Get-Nickname {
@@ -58,13 +115,33 @@ function Get-Nickname {
         return $givenName
     }
 }
+
+
+# Get the Azure users
+function Get-UserObjects {
+    param ($azureObjects)
+    $users = @()
+    foreach ($o in $azureObjects) {
+        Write-Host "-> $($o.DisplayName)  [$($o.ObjectType)]"
+        if ($o.ObjectType -eq 'User') {
+            # Collect the user object
+            $users += $o
+        } elseif ($o.ObjectType -eq 'Group') {
+            Write-Host "---> will parse this group"
+            $gm = Get-AzureADGroupMember -All $true -ObjectId $o.ObjectId
+            $users += Get-UserObjects -azureObjects $gm
+        } else {
+            Write-Host "---> skip this object"
+        }
+    }
+    return $users
+}
+
+
 ######################
 
 # Capture the start time of script
 $startTime = Get-Date
-
-# Force the use of TLS 1.2
-[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
 
 # Azure AD User object fields to collect
 $azureUserFields = @(
@@ -101,7 +178,7 @@ $Bio = ""
 $Email = "UserPrincipalName"
 $StartDate = ""
 $EndDate = ""
-$ShowInVd = "" 
+$ShowInVd = ""
 $Udf0 = "Mobile"                   # User's mobile number
 $Udf1 = "ManagerUserPrincipalName" # Manager's email
 $Udf2 = "ManagerPrefName"          # Manager's Given/first name. ManagerPrefName can update if $tryNicknames.
@@ -112,7 +189,7 @@ $Udf6 = ""
 $Udf7 = ""
 $Udf8 = ""
 $Udf9 = ""
-$Udf10 = "" 
+$Udf10 = ""
 $Udf11 = ""
 $Udf12 = ""
 $Udf13 = ""
@@ -137,45 +214,26 @@ if ($supportedPhotoSources -contains $photoSource) {
 } else {
     Write-Host "$photoSource is not a supported photoSource. Available values: $supportedPhotoSources"
     Stop-Transcript
-    Exit 2
+    Exit-Script 2
 }
 Write-Host "tryNicknames: $tryNicknames"
 
-# Connect to OfficSpace to get count of existing records.
+# Force the use of TLS 1.2
+[System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
+# Test JSON capability
+$jsonOk = Test-Json
+
+# Connect to OfficeSpace to get count of existing records.
 Write-Host "Communicating with OfficeSpace to get count of existing employee records..."
-Try {
-    Write-Host -NoNewLine "  Test JSON parsing performance: "
-    "a" * 2mb | ConvertTo-Json | ConvertFrom-Json | Out-Null
-    Write-Host "PASS"
-    $r = (Invoke-RestMethod -Uri $ossGetEmployeesUrl -Method Get -Headers $ossHeaders)
-    $ossCount = $r.Count
-    $arrayCount = $r.Response.Count
-} Catch [System.ArgumentException] {
-    Write-Host "FAIL"
-    Write-Host "  NOTICE: Your PowerShell environment may not support parsing larger JSON data sets."
-    Write-Host "  Switching to Invoke-WebRequest..."
-    $w = (Invoke-WebRequest -Uri $ossGetEmployeesUrl -UseBasicParsing -Method Get -Headers $ossHeaders)
-    $rawContentLength = $w.RawContentLength
-    Write-Host "debug: raw content length: $rawContentLength"
-    [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
-    $jsonSerial = New-Object -TypeName System.Web.Script.Serialization.JavaScriptSerializer
-    # If you set MaxJsonLength to $rawContentLength - 1, you'll hit the error.
-    $jsonSerial.MaxJsonLength  = $rawContentLength 
-    $r = $jsonSerial.DeserializeObject($w.Content)
-    $ossCount = $r.count
-    $arrayCount = $r.response.count
-} Catch {
-    Write-Host "General exception caught: $_.Exception.Message"
-    Stop-Transcript
-    Exit 2
-} Finally {
-    Write-Host "debug: ossCount: $ossCount  arrayCount: $arrayCount"
-}
+$r = (Get-WebJson -Url $ossGetEmployeesUrl -Headers $ossHeaders)
+$ossCount = $r.count
+$arrayCount = $r.response.count
+Write-Host "debug: ossCount: $ossCount, arrayCount: $arrayCount"
 
 if ($ossCount -ne $arrayCount) {
     Write-Host "Count mismatch when querying OfficeSpace! Exiting."
     Stop-Transcript
-    Exit 2
+    Exit-Script 2
 }
 $ossCurrentUserCount = $ossCount
 Write-Host "$ossCurrentUserCount existing OfficeSpace records"
@@ -184,7 +242,6 @@ Write-Host "$ossCurrentUserCount existing OfficeSpace records"
 Import-Module AzureAD
 $azureadModuleInfo = Get-Module AzureAD
 Write-Host "AzureAD module version: $($azureadModuleInfo.Version)"
-
 $azurePassword = gc $credsFile
 $azurePassword = ConvertTo-SecureString $azurePassword -Force
 $azureCredential = New-Object System.Management.Automation.PSCredential -ArgumentList $azureUsername,$azurePassword
@@ -196,18 +253,23 @@ Try {
 } Catch {
     Write-Host "Problem connecting to Azure AD. Exiting..."
     Stop-Transcript
-    Exit 2
+    Exit-Script 2
 }
 
 Write-Host "Getting Azure AD users..."
 # Get an array of Azure AD User objects (filtering out disabled accounts)
-$azureUsers = Get-AzureADUser -All $true -Filter "AccountEnabled eq true"
+$azureObjects = Get-AzureADUser -All $true -Filter "AccountEnabled eq true"
+$azureObjectsCount = $azureObjects.count
+Write-Host "$azureObjectsCount AzureAD objects returned"
+$result = Get-UserObjects -azureObjects $azureObjects
+Write-Host "Ensuring uniqueness..."
+$azureUsers = $result | Sort-Object UserPrincipalName -Unique
 $azureUserCount = $azureUsers.Count
-Write-Host "$azureUserCount AzureAD user objects returned"
+Write-Host "$azureUserCount unique Azure AD users found (from $($result.count) users)"
 # Exit script if no user objects were returned
 if ($azureUsers.Count -eq 0) {
     Stop-Transcript
-    Exit
+    Exit-Script 1
 }
 
 # Connect to Exchange if we are sourcing photos from there
@@ -248,7 +310,7 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
     $u = $azureUsers[$counter - 1]
     $userId = $u.UserPrincipalName
     Write-Host "-> $userId  [$counter/$azureUserCount]"
-    
+
     # Skip if user has no last name
     if ($u.Surname -eq $null) {
         Write-Host "    (no last name, skipping)"
@@ -272,7 +334,7 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
     foreach ($i in $azureUserFields) {
         $ossUser.Add($i, $u.$i)
     }
-    
+
     # Fetch manager info and add it to the user
     $mgr = Get-AzureADUserManager -ObjectId $userId
     if ($mgr -ne $null) {
@@ -284,7 +346,7 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
         } else {
             $ossUser.Add("ManagerPrefName", $mgr.GivenName)
         }
-    } 
+    }
     foreach ($i in $azureManagerFields) {
         $ossUser.Add("Manager" + $i, $mgr.$i)
     }
@@ -373,19 +435,35 @@ if ($ossCurrentUserCount -gt 0) {
     if ($importPercentage -lt $importThreshold) {
         Write-Host "The number of users to import is too low to perform the import. Exiting."
         Stop-Transcript
-        Exit 1
+        Exit-Script 1
     }
 }
 
+
 # Setup batching
-$totalBatches = [math]::Floor($userCount / $batchSize) + 1
+$totalBatches = [math]::Ceiling($userCount / $batchSize)
 $startIdx     = 0
 $endIdx       = $batchSize - 1
 $currentBatch = 1
 
 # Start communicating with OfficeSpace
-Write-Host "Preparing OfficeSpace for data push..."
-Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchStagingUrl -ContentType application/json -Method Delete -Headers $ossHeaders | Out-Null
+Write-Host "Preparing OfficeSpace for data push (staging records) ..." -NoNewline
+# Check response; exit on error.
+try {
+    $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchStagingUrl -ContentType application/json -Method Delete -Headers $ossHeaders
+    Write-Host "  [response: $($resp.StatusCode)/$($resp.StatusDescription)]"
+    if ($resp.StatusCode -ne 200) {
+        Write-Host "Exiting due to non-200 status code [$($resp.StatusCode)/$($resp.StatusDescription)] seen when attempting staging records to $ossEmployeeBatchStagingUrl" -ForegroundColor Red
+        Exit-Script 2
+    }
+} catch [System.Net.WebException] {
+    $e = $_
+    Write-Host "Exception caught while attempting staging records to $ossEmployeeBatchStagingUrl : $($e.Exception)" -ForegroundColor Red
+    Exit-Script 2
+} catch {
+    Write-Host "General Exception caught while attempting staging records to $ossEmployeeBatchStagingUrl : $_" -ForegroundColor Red
+    Exit-Script 2
+}
 
 Write-Host "Sending records to $ossEmployeeBatchUrl"
 do {
@@ -439,26 +517,54 @@ do {
 
     $JSONArray = ConvertTo-Json -InputObject $ossImportBatch
     $JSONArrayUTF8 = [System.Text.Encoding]::UTF8.GetBytes($JSONArray)
-    Try {
-        Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchUrl -ContentType 'application/json; charset=utf-8' -Method Post -Body $JSONArrayUTF8 -Headers $ossHeaders -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
+
+    try {
+        # Check response; exit on error
+        $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchUrl -ContentType 'application/json; charset=utf-8' -Method Post -Body $JSONArrayUTF8 -Headers $ossHeaders -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+        if ($resp.StatusCode -ne 200) {
+            Write-Host "Exiting due to non-200 status code [$($resp.StatusCode)/$($resp.StatusDescription)] seen when attempting sending records to $ossEmployeeBatchUrl" -ForegroundColor Red
+            Exit-Script 2
+        }
         $startNum = $startIdx + 1
         $endNum = $endIdx + 1
         Write-Host "$startNum-$endNum " -NoNewline
-        Write-Host "Done" -ForegroundColor Green
-    } Catch {
-        $startNum = $startIdx + 1
-        $endNum = $endIdx + 1
-        Write-Host "$startNum-$endNum " -NoNewline
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Host "Done" -ForegroundColor Green -NoNewline
+        Write-Host "  [response: $($resp.StatusCode)/$($resp.StatusDescription)]"
+    } catch [System.Net.WebException] {
+        $e = $_
+        Write-Host "Exception caught while attempting sending records to $ossEmployeeBatchUrl : $($e.Exception)" -ForegroundColor Red
+        Exit-Script 2
+    } catch {
+        Write-Host "General Exception caught while attempting sending records to $ossEmployeeBatchUrl : $_" -ForegroundColor Red
+        Exit-Script 2
     }
+
     $startIdx += $batchSize
     $endIdx += $batchSize
     $currentBatch++
 } while ($currentBatch -le $totalBatches)
 
-Write-Host "Triggering migration..."
+#Write-Host "Triggering migration..."
+#Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeImportUrl -Method Post -Body $ossImportUrlPostBody -Headers $ossHeaders | Out-Null
+Write-Host "Triggering migration ..." -NoNewline
 $ossImportUrlPostBody = "Source=" + $source
-Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeImportUrl -Method Post -Body $ossImportUrlPostBody -Headers $ossHeaders | Out-Null
+# Check response.
+try {
+    $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeImportUrl -Method Post -Body $ossImportUrlPostBody -Headers $ossHeaders
+    Write-Host "  [response: $($resp.StatusCode)/$($resp.StatusDescription)]"
+    if ($resp.StatusCode -ne 200) {
+        Write-Host "Exiting due to non-200 status code [$($resp.StatusCode)/$($resp.StatusDescription)] seen when attempting migration to $ossEmployeeImportUrl" -ForegroundColor Red
+        Exit-Script 2
+    }
+} catch [System.Net.WebException] {
+    $e = $_
+    Write-Host "Exception caught while attempting migration to $ossEmployeeImportUrl : $($e.Exception)" -ForegroundColor Red
+    Exit-Script 2
+} catch {
+    Write-Host "General Exception caught while attempting migration to $ossEmployeeImportUrl : $_" -ForegroundColor Red
+    Exit-Script 2
+}
+
 
 # Timing
 $endTime = Get-Date
