@@ -1,11 +1,22 @@
 #
 # photo_push_from_o365_to_officespace.ps1 - upload photos from Exchange Online, Azure AD to OfficeSpace
 #
-###############
+###################
+# Script parameters
+###################
+param (
+    [Parameter(Mandatory = $false)]$creds = $false         # (optional) -creds path_to_creds_file
+)                                                          #   If supplied, will override User config for $promptForCreds and $credsFile.
+
+#############
 # User config
-###############
-$azureUsername   = "serviceacct@customer.com"              # user with Azure AD access
+#############
+$promptForCreds  = $true                                   # $true: will prompt user for credentials
+                                                           # $false: will use creds stored in $credsFile
+                                                           # If -creds command line option is provided, this variable is ignored.
 $credsFile       = "C:\ps\serviceacct.creds"               # encrypted user credentials file
+                                                           # If -creds command line option is provided, this variable is ignored.
+$azureUsername   = "serviceacct@customer.com"              # user with Azure AD access
 $useLogFile      = $true                                   # Log output to file ($true=log, $false=do not log)
 $logFile         = "$PSScriptRoot\photo_import.txt"        # Path to log file
 $photoSource     = "exchange-azuread"                      # source for photos: azuread, exchange, exchange-azuread, none
@@ -13,18 +24,19 @@ $photosDir       = "C:\ps\photos"                          # directory to downlo
                                                            #    (only used if $photoSource = 'azuread' or 'exchange-azuread')
 $ossToken        = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"      # OfficeSpace API key
 $ossHostname     = "customer.officespacesoftware.com"      # OfficeSpace instance hostname
+#############
 
-
-######################
 $supportedPhotoSources      = @( 'azuread', 'exchange', 'exchange-azuread', 'none' )
 $ossProtocol                = "https://"
 $ossHeaders                 = @{Authorization = "Token token=" + $ossToken}
 $ossEmployeesUrl            = "/api/1/employees"
 $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
-$version                    = 1
-######################
+$version                    = 2
 
-# Exit the script and stop logging if on
+###########
+# Functions
+###########
+# Cleanup and exit the script
 function Exit-Script {
     param(
         [Parameter(Mandatory=$false)] [Int]$Code = 0 
@@ -149,9 +161,9 @@ function Upload-Photo {
     }
 }
 
-
-######################
-
+########################
+# Script execution start
+########################
 # Capture the start time of script
 $startTime = Get-Date
 
@@ -160,6 +172,13 @@ if ($useLogFile) {
     Start-Transcript -Path "$logFile"
 }
 Write-Host "Script version $version start"
+
+# Sort out creds source. If user supplied -creds command line option, don't popup a prompt for creds.
+if ($creds) {
+    $promptForCreds = $false
+    $credsFile = $creds
+}
+# Check that photoSource is valid
 if ($supportedPhotoSources -contains $photoSource) {
     Write-Host "photoSource: $photoSource"
 } else {
@@ -203,12 +222,22 @@ Write-Output "$($employees.Count) OfficeSpace records added to employeesMap."
 
 
 # AzureAD
-Import-Module AzureAD
+if (Get-Module -ListAvailable -Name AzureAD) {
+    Import-Module AzureAD
+} else {
+    Write-Host "The 'AzureAD' module may not be installed. Check and run as an Administrator 'Install-Module AzureAD'"
+    Exit-Script 2
+}
 $azureadModuleInfo = Get-Module AzureAD
 Write-Host "AzureAD module version: $($azureadModuleInfo.Version)"
-$azurePassword = gc $credsFile
-$azurePassword = ConvertTo-SecureString $azurePassword -Force
-$azureCredential = New-Object System.Management.Automation.PSCredential -ArgumentList $azureUsername,$azurePassword
+if ($promptForCreds) {
+    Write-Host "(will prompt for Azure AD user credentials)"
+    $azureCredential = Get-Credential
+} else {
+    $azurePassword = gc $credsFile
+    $azurePassword = ConvertTo-SecureString $azurePassword -Force
+    $azureCredential = New-Object System.Management.Automation.PSCredential -ArgumentList $azureUsername,$azurePassword
+}
 
 # Connect to AzureAD using supplied credentials
 Write-Host "Connecting to AzureAD..."
