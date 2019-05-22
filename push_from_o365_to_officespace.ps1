@@ -1,19 +1,34 @@
-###############
+#
+# push_from_o365_to_officespace.ps1 - import users from Exchange Online, Azure AD to OfficeSpace
+#
+###################
+# Script parameters
+###################
+param (
+    [Parameter(Mandatory = $false)]$creds = $false         # (optional) -creds path_to_creds_file
+)                                                          #   If supplied, will override User config for $promptForCreds and $credsFile.
+
+#############
 # User config
-###############
+#############
+$promptForCreds  = $true                                   # $true: will prompt user for credentials
+                                                           # $false: will use creds stored in $credsFile
+                                                           # If -creds command line option is provided, $promptForCreds is ignored.
 $azureUsername   = "oss_service@mycompany.com"             # user with Azure AD access
 $credsFile       = "C:\ps\oss_service.creds"               # encrypted user credentials file
-$logFile         = "C:\ps\oss_import.txt"                  # log file
+
+$useLogFile      = $true                                   # Log output to file ($true=log, $false=do not log)
+$logFile         = "$PSScriptRoot\oss_import.txt"          # Path to log file
 $photoSource     = "exchange-azuread"                      # source for photos: azuread, exchange, exchange-azuread, none
 $photosDir       = "C:\ps\photos"                          # directory to download thumbnail photos
                                                            #    (only used if $photoSource = 'azuread' or 'exchange-azuread')
-$ossToken        = "123456789abcef0f1d7161a7f1809f80"      # OfficeSpace API key
+$ossToken        = "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx"      # OfficeSpace API key
 $ossHostname     = "mycompany.officespacesoftware.com"     # OfficeSpace instance hostname
 $tryNicknames    = $false                                  # look at displayName for possible preferred name
 $importThreshold = 60                                      # minimum percentage of import count compared to existing OSS record count
                                                            #   If the user count to import is less than this threshold %, don't import.
+###########
 
-######################
 $source                     = "AzureAD"
 $batchSize                  = 300
 $supportedPhotoSources      = @( 'azuread', 'exchange', 'exchange-azuread', 'none' )
@@ -26,15 +41,26 @@ $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
 $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
-$version                    = 2
-######################
+$version                    = 3
 
-# Exit the script and stop logging if on
+###########
+# Functions
+###########
+# Cleanup and exit the script
 function Exit-Script {
     param(
         [Parameter(Mandatory=$false)] [Int]$Code = 0
     )
-
+    # End Exchange session
+    if (Get-PSSession) {
+        Remove-PSSession $exchangeSession -Verbose
+    }
+    # End AzureAD session
+    Try {
+        Disconnect-AzureAD -Verbose
+    } catch {
+    }
+    # Stop logging
     if ($useLogFile) {
         Stop-Transcript
     }
@@ -55,8 +81,7 @@ function Test-Json {
         return $false
     } catch {
         Write-Host "Test-Json() General exception caught: $_.Exception.Message"
-        Stop-Transcript
-        Exit 2
+        Exit-Script 2
     }
 }
 
@@ -78,7 +103,7 @@ function Get-WebJson {
         Write-Host "debug: raw content length: $rawContentLength"
         [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
         $jsonSerial = New-Object -TypeName System.Web.Script.Serialization.JavaScriptSerializer
-        # If you set MaxJsonLength to $rawContentLength - 1, you'll hit the error.
+        # If MaxJsonLength < $rawContentLength, you'll hit an error.
         $jsonSerial.MaxJsonLength  = $rawContentLength
         $resp = $jsonSerial.DeserializeObject($w.Content)
     }
@@ -138,8 +163,9 @@ function Get-UserObjects {
 }
 
 
-######################
-
+########################
+# Script execution start
+########################
 # Capture the start time of script
 $startTime = Get-Date
 
@@ -163,9 +189,9 @@ $azureManagerFields = @(
     'UserPrincipalName'
 )
 
-########################################################
+######################################################
 # OfficeSpace <-> Azure AD attribute attribute mapping
-########################################################
+######################################################
 $EmployeeId = "UserPrincipalName"  # UPN is unique and easy to recongize. There is also a unique objectId.
 $FirstName = "PrefName"            # PrefName = GivenName. PrefName can update if $tryNicknames.
 $LastName = "Surname"
@@ -207,16 +233,24 @@ $Udf24 = ""
 ######################
 
 # Start logging stdout and stderr to file
-Start-Transcript -Path "$logFile"
+if ($useLogFile) {
+    Start-Transcript -Path "$logFile"
+}
 Write-Host "Script version $version start"
+# Sort out creds source. If user supplied -creds command line option, don't popup a prompt for creds.
+if ($creds) {
+    $promptForCreds = $false
+    $credsFile = $creds
+}
+# Check that photoSource is valid
 if ($supportedPhotoSources -contains $photoSource) {
     Write-Host "photoSource: $photoSource"
 } else {
     Write-Host "$photoSource is not a supported photoSource. Available values: $supportedPhotoSources"
-    Stop-Transcript
     Exit-Script 2
 }
 Write-Host "tryNicknames: $tryNicknames"
+
 
 # Force the use of TLS 1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -227,24 +261,33 @@ $jsonOk = Test-Json
 Write-Host "Communicating with OfficeSpace to get count of existing employee records..."
 $r = (Get-WebJson -Url $ossGetEmployeesUrl -Headers $ossHeaders)
 $ossCount = $r.count
-$arrayCount = $r.response.count
+$arrayCount = $r.response.Count
 Write-Host "debug: ossCount: $ossCount, arrayCount: $arrayCount"
 
 if ($ossCount -ne $arrayCount) {
     Write-Host "Count mismatch when querying OfficeSpace! Exiting."
-    Stop-Transcript
     Exit-Script 2
 }
 $ossCurrentUserCount = $ossCount
 Write-Host "$ossCurrentUserCount existing OfficeSpace records"
 
 # AzureAD
-Import-Module AzureAD
+if (Get-Module -ListAvailable -Name AzureAD) {
+    Import-Module AzureAD
+} else {
+    Write-Host "The 'AzureAD' module may not be installed. Check and run as an Administrator 'Install-Module AzureAD'"
+    Exit-Script 2
+}
 $azureadModuleInfo = Get-Module AzureAD
 Write-Host "AzureAD module version: $($azureadModuleInfo.Version)"
-$azurePassword = gc $credsFile
-$azurePassword = ConvertTo-SecureString $azurePassword -Force
-$azureCredential = New-Object System.Management.Automation.PSCredential -ArgumentList $azureUsername,$azurePassword
+if ($promptForCreds) {
+    Write-Host "(will prompt for Azure AD user credentials)"
+    $azureCredential = Get-Credential
+} else {
+    $azurePassword = gc $credsFile
+    $azurePassword = ConvertTo-SecureString $azurePassword -Force
+    $azureCredential = New-Object System.Management.Automation.PSCredential -ArgumentList $azureUsername,$azurePassword
+}
 
 # Connect to AzureAD using supplied credentials
 Write-Host "Connecting to AzureAD..."
@@ -252,7 +295,6 @@ Try {
     Connect-AzureAD -Credential $azureCredential | Out-Null
 } Catch {
     Write-Host "Problem connecting to Azure AD. Exiting..."
-    Stop-Transcript
     Exit-Script 2
 }
 
@@ -268,7 +310,6 @@ $azureUserCount = $azureUsers.Count
 Write-Host "$azureUserCount unique Azure AD users found (from $($result.count) users)"
 # Exit script if no user objects were returned
 if ($azureUsers.Count -eq 0) {
-    Stop-Transcript
     Exit-Script 1
 }
 
@@ -399,14 +440,6 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
     $ossUsersArray.Add($ossUser) | Out-Null
 }
 
-if ($photoSource.Contains('exchange')) {
-    # Disconnect the remote PowerShell session
-    Remove-PSSession $exchangeSession -Verbose
-}
-
-# Disconnect the current session from AzureAD tenant
-Disconnect-AzureAD -Verbose
-
 # Stats
 Write-Host "$azureUserCount users inspected"
 Write-Host "$mgrsFound manager assignments found"
@@ -434,7 +467,6 @@ if ($ossCurrentUserCount -gt 0) {
     Write-Host "importPercentage=$importPercentage, importThreshold=$importThreshold"
     if ($importPercentage -lt $importThreshold) {
         Write-Host "The number of users to import is too low to perform the import. Exiting."
-        Stop-Transcript
         Exit-Script 1
     }
 }
@@ -544,8 +576,6 @@ do {
     $currentBatch++
 } while ($currentBatch -le $totalBatches)
 
-#Write-Host "Triggering migration..."
-#Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeImportUrl -Method Post -Body $ossImportUrlPostBody -Headers $ossHeaders | Out-Null
 Write-Host "Triggering migration ..." -NoNewline
 $ossImportUrlPostBody = "Source=" + $source
 # Check response.
@@ -570,6 +600,6 @@ try {
 $endTime = Get-Date
 $elapsedTime = $endTime - $startTime
 Write-Host "Completed in $($elapsedTime.TotalSeconds) seconds"
-# Stop logging
-Stop-Transcript
+
+Exit-Script 0
 
