@@ -398,20 +398,27 @@ for ($counter = 1; $counter -le $azureUserCount; $counter++) {
     $checkAzureForPhoto = $false
     if ($photoSource.Contains('exchange')) {
         if ($exchangePhoto.$userId -eq $true) {
-             $photo = Get-UserPhoto -Identity $userId
-             $imageDataRaw = ""
-             $imageDataRaw = $photo.PictureData
-             if ($imageDataRaw -ne "") {
-                 $photosFound++
-                 $photosExchange++
-                 Write-Host "    (has photo [exch])"
-                 $md5 = New-Object -TypeName System.Security.Cryptography.MD5CryptoServiceProvider
-                 $md5Hash = [System.BitConverter]::ToString($md5.ComputeHash($imageDataRaw))
-                 $md5Hash = $md5Hash -replace '-',''
-                 $imageDataBase64 = [System.Convert]::ToBase64String($imageDataRaw)
-                 $ossUser.Set_Item("PhotoMd5", $photoMd5.Hash)
-                 $ossUser.Set_Item("ImageData", $imageDataBase64)
-             }
+            Try {
+                 $photo = $null
+                 $photo = Get-UserPhoto -Identity $userId
+                 $imageDataRaw = $null
+                 $imageDataRaw = $photo.PictureData
+                 if ($imageDataRaw -ne "") {
+                     $photosFound++
+                     $photosExchange++
+                     Write-Host "    (has photo [exch])"
+                     $md5 = New-Object -TypeName System.Security.Cryptography.MD5CryptoServiceProvider
+                     $md5Hash = $null
+                     $md5Hash = [System.BitConverter]::ToString($md5.ComputeHash($imageDataRaw))
+                     $md5Hash = $md5Hash -replace '-',''
+                     $imageDataBase64 = $null
+                     $imageDataBase64 = [System.Convert]::ToBase64String($imageDataRaw)
+                     $ossUser.Set_Item("PhotoMd5", $md5Hash)
+                     $ossUser.Set_Item("ImageData", $imageDataBase64)
+                 }
+             } Catch {
+                Write-Host "    (couldn't retrieve photo [exch])"
+            }
         }
         if ($ossUser.ImageData -eq $null -and $photoSource -eq "exchange-azuread") {
             $checkAzureForPhoto = $true
