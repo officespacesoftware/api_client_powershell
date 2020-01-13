@@ -41,7 +41,7 @@ $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
 $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
-$version                    = 3
+$version                    = 4
 
 ###########
 # Functions
