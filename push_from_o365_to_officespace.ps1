@@ -41,7 +41,7 @@ $ossGetEmployeesUrl         = $ossProtocol + $ossHostname + $ossEmployeesUrl
 $ossEmployeeBatchUrl        = $ossProtocol + $ossHostname + $ossBatchUrl
 $ossEmployeeBatchStagingUrl = $ossProtocol + $ossHostname + $ossImportUrl + "/" + $source
 $ossEmployeeImportUrl       = $ossProtocol + $ossHostname + $ossImportUrl
-$version                    = 3
+$version                    = 4
 
 ###########
 # Functions
@@ -95,10 +95,10 @@ function Get-WebJson {
 
     if ($jsonOk) {
         # Invoke-RestMethod
-        $resp = Invoke-RestMethod -Uri $Url -Method Get -Headers $Headers
+        $resp = Invoke-RestMethod -Uri $Url -Method Get -Headers $Headers -DisableKeepAlive
     } else {
         # Invoke-WebRequest
-        $w = Invoke-WebRequest -Uri $Url -UseBasicParsing -Method Get -Headers $Headers
+        $w = Invoke-WebRequest -Uri $Url -UseBasicParsing -Method Get -Headers $Headers -DisableKeepAlive
         $rawContentLength = $w.RawContentLength
         Write-Host "debug: raw content length: $rawContentLength"
         [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
@@ -489,7 +489,7 @@ $currentBatch = 1
 Write-Host "Preparing OfficeSpace for data push (staging records) ..." -NoNewline
 # Check response; exit on error.
 try {
-    $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchStagingUrl -ContentType application/json -Method Delete -Headers $ossHeaders
+    $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchStagingUrl -ContentType application/json -Method Delete -Headers $ossHeaders -DisableKeepAlive
     Write-Host "  [response: $($resp.StatusCode)/$($resp.StatusDescription)]"
     if ($resp.StatusCode -ne 200) {
         Write-Host "Exiting due to non-200 status code [$($resp.StatusCode)/$($resp.StatusDescription)] seen when attempting staging records to $ossEmployeeBatchStagingUrl" -ForegroundColor Red
@@ -559,7 +559,7 @@ do {
 
     try {
         # Check response; exit on error
-        $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchUrl -ContentType 'application/json; charset=utf-8' -Method Post -Body $JSONArrayUTF8 -Headers $ossHeaders -WarningAction SilentlyContinue -ErrorAction SilentlyContinue
+        $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchUrl -ContentType 'application/json; charset=utf-8' -Method Post -Body $JSONArrayUTF8 -Headers $ossHeaders -WarningAction SilentlyContinue -ErrorAction SilentlyContinue -DisableKeepAlive
         if ($resp.StatusCode -ne 200) {
             Write-Host "Exiting due to non-200 status code [$($resp.StatusCode)/$($resp.StatusDescription)] seen when attempting sending records to $ossEmployeeBatchUrl" -ForegroundColor Red
             Exit-Script 2
@@ -587,7 +587,7 @@ Write-Host "Triggering migration ..." -NoNewline
 $ossImportUrlPostBody = "Source=" + $source
 # Check response.
 try {
-    $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeImportUrl -Method Post -Body $ossImportUrlPostBody -Headers $ossHeaders
+    $resp = Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeImportUrl -Method Post -Body $ossImportUrlPostBody -Headers $ossHeaders -DisableKeepAlive
     Write-Host "  [response: $($resp.StatusCode)/$($resp.StatusDescription)]"
     if ($resp.StatusCode -ne 200) {
         Write-Host "Exiting due to non-200 status code [$($resp.StatusCode)/$($resp.StatusDescription)] seen when attempting migration to $ossEmployeeImportUrl" -ForegroundColor Red
