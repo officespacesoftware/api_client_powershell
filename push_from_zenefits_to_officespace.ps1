@@ -291,17 +291,19 @@ for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
     # Fetch thumbnail photo and add it to the OSS user
     $ossUser.Add("PhotoMd5", $null)
     $ossUser.Add("ImageData", $null)
+    $imageDataRaw = $null
+    $imageDataBase64 = $null    
     if ($photoSource.Contains('zenefits')) {
         if ($u.photo_thumbnail_url) {
              $photosFound++
-             Write-Host "    (has photo [thumbnail_url])"
+             Write-Host "    (has photo [$($u.photo_thumbnail_url)])"
              $photoFile = $photosDir + '\' + $userId + '.png'
              Invoke-WebRequest $u.photo_thumbnail_url -OutFile $photoFile
              $photoMd5 = Get-FileHash -Path $($photoFile) -Algorithm MD5
              # Subtle difference if using PSCore
              if ($PSEdition -eq 'Core') {
                  $imageDataRaw = Get-Content -Raw $photoFile -AsByteStream
-             }
+             } else {
                  $imageDataRaw = Get-Content -Raw $photoFile -Encoding Byte
              }
              $imageDataBase64 = [System.Convert]::ToBase64String($imageDataRaw)
