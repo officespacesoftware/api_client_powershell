@@ -110,7 +110,7 @@ $zenefitsManagerFields = @(
 # OfficeSpace <-> Zenefits attribute attribute mapping
 ########################################################
 $EmployeeId = "id"                   # Employee ID number
-$FirstName = "first_name"
+$FirstName = "pref_name"
 $LastName = "last_name"
 $Title = "title"
 $WorkPhone = "work_phone"
