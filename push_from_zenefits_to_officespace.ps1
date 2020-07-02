@@ -55,13 +55,13 @@ function Get-Nickname {
        if ($givenName -eq $null -Or $givenName -eq "") {
            if ($objType -eq 'user') {
                $script:nicknamesAssigned++
-               Write-Host "    (no givenName, so took from displayName)"
+               Write-Output "    (no givenName, so took from displayName)"
            }
            return $displayName.Split()[0]
        } elseif ($displayName.IndexOf($givenName) -eq -1) {
            if ($objType -eq 'user') {
                $script:nicknamesAssigned++
-               Write-Host "    (givenName not found in displayName, so took from displayName)"
+               Write-Output "    (givenName not found in displayName, so took from displayName)"
            }
            return $displayName.Split()[0]
        } else {
@@ -69,7 +69,7 @@ function Get-Nickname {
            return $givenName
        }
     } else {
-        Write-Host "    (single word displayName)"
+        Write-Output "    (single word displayName)"
         return $givenName
     }
 }
@@ -79,14 +79,14 @@ function Test-Json {
     Write-Host -NoNewLine "Test JSON parsing performance: "
     Try {
         "a" * 2mb | ConvertTo-Json | ConvertFrom-Json | Out-Null
-        Write-Host "PASS"
+        Write-Output "PASS"
         return $true
     } catch [System.ArgumentException] {
-        Write-Host "FAIL"
-        Write-Host "NOTICE: Your PowerShell environment may not support parsing larger JSON data sets."
+        Write-Output "FAIL"
+        Write-Output "NOTICE: Your PowerShell environment may not support parsing larger JSON data sets."
         return $false
     } catch {
-        Write-Host "Test-Json() General exception caught: $_.Exception.Message"
+        Write-Output "Test-Json() General exception caught: $_.Exception.Message"
         Stop-Transcript
         Exit 2
     }
@@ -96,7 +96,7 @@ function Test-Json {
 
 # Capture the start time of script
 $startTime = Get-Date
-Write-Host "Script version $version start"
+Write-Output "Script version $version start"
 
 # Force the use of TLS 1.2
 [System.Net.ServicePointManager]::SecurityProtocol = [System.Net.SecurityProtocolType]::Tls12
@@ -164,26 +164,26 @@ $Udf24 = ""
 # Start logging stdout and stderr to file
 Start-Transcript -Path "$logFile"
 if ($supportedPhotoSources -contains $photoSource) {
-    Write-Host "photoSource: $photoSource"
+    Write-Output "photoSource: $photoSource"
 } else {
-    Write-Host "$photoSource is not a supported photoSource. Available values: $supportedPhotoSources"
+    Write-Output "$photoSource is not a supported photoSource. Available values: $supportedPhotoSources"
     Stop-Transcript
     Exit 2
 }
-Write-Host "tryNicknames: $tryNicknames"
+Write-Output "tryNicknames: $tryNicknames"
 $jsonOk = Test-Json
 
 # Connect to OfficSpace to get count of existing records.
-Write-Host "Communicating with OfficeSpace to get count of existing employee records..."
+Write-Output "Communicating with OfficeSpace to get count of existing employee records..."
 if ($jsonOk) {
     $r = (Invoke-RestMethod -Uri $ossGetEmployeesUrl -Method Get -Headers $ossHeaders)
     $ossCount = $r.Count
     $arrayCount = $r.Response.Count
 } else {
-    Write-Host "Using Invoke-WebRequest..."
+    Write-Output "Using Invoke-WebRequest..."
     $w = (Invoke-WebRequest -Uri $ossGetEmployeesUrl -UseBasicParsing -Method Get -Headers $ossHeaders)
     $rawContentLength = $w.RawContentLength
-    Write-Host "debug: raw content length: $rawContentLength"
+    Write-Output "debug: raw content length: $rawContentLength"
     [void][System.Reflection.Assembly]::LoadWithPartialName("System.Web.Extensions")
     $jsonSerial = New-Object -TypeName System.Web.Script.Serialization.JavaScriptSerializer
     # If you set MaxJsonLength to $rawContentLength - 1, you'll hit the error.
@@ -192,21 +192,21 @@ if ($jsonOk) {
     $ossCount = $r.count
     $arrayCount = $r.response.count
 }
-Write-Host "debug: ossCount: $ossCount  arrayCount: $arrayCount"
+Write-Output "debug: ossCount: $ossCount  arrayCount: $arrayCount"
 
 if ($ossCount -ne $arrayCount) {
-    Write-Host "Count mismatch when querying OfficeSpace! Exiting."
+    Write-Output "Count mismatch when querying OfficeSpace! Exiting."
     Stop-Transcript
     Exit 2
 }
 $ossCurrentUserCount = $ossCount
-Write-Host "$ossCurrentUserCount existing OfficeSpace records"
+Write-Output "$ossCurrentUserCount existing OfficeSpace records"
 
 # Initialize arrays to store the Zenefits users and departments
 $zenefitsUsers = @()
 $zenefitsDepts = @()
 # Communicate with Zenefits
-Write-Host "Connecting to Zenefits..."
+Write-Output "Connecting to Zenefits..."
 # Get Users
 $getZenefitsUsers = $true
 $zenefitsUrl = $zenefitsPeopleUrl
@@ -222,13 +222,13 @@ while ($getZenefitsUsers) {
             $getZenefitsUsers = $false
         }
     } Catch {
-        Write-Host "Problem connecting to Zenefits. Exiting..."
+        Write-Output "Problem connecting to Zenefits. Exiting..."
         Stop-Transcript
         Exit 2
     }
 }
 $zenefitsUserCount = $zenefitsUsers.Count
-Write-Host "$zenefitsUserCount Zenefits users returned"
+Write-Output "$zenefitsUserCount Zenefits users returned"
 # Exit script if no users were returned
 if ($zenefitsUsers.Count -eq 0) {
     Stop-Transcript
@@ -238,7 +238,7 @@ if ($zenefitsUsers.Count -eq 0) {
 # Create photos directory if needed
 if ($photoSource.Contains('zenefits') -and !(Test-Path $photosDir)) {
     New-Item -Path $photosDir -ItemType Directory | Out-Null
-    Write-Host "Created photosDir: $photosDir"
+    Write-Output "Created photosDir: $photosDir"
 }
 
 # Build an array from the Zenefits Users that we can modify
@@ -248,19 +248,19 @@ $mgrsFound         = 0
 $photosFound       = 0
 $nicknamesAssigned = 0
 $usersSkipped      = @()
-Write-Host "Inspecting users..."
+Write-Output "Inspecting users..."
 
 for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
     # OSS user hash table
     $ossUser = @{}
     $u = $zenefitsUsers[$counter - 1]
     $userId = $u.id
-    Write-Host "-> ${userId}:$($u.first_name) $($u.last_name) [$counter/$zenefitsUserCount]"
+    Write-Output "-> ${userId}:$($u.first_name) $($u.last_name) [$counter/$zenefitsUserCount]"
     
     # Skip if user doesn't have a desired employment status and onlyActive is false
     if (-not $onlyActive) {
         if (-not $employmentStatus[$u.status]){
-            Write-Host "    (undesired employment status: $($u.status), skipping)"
+            Write-Output "    (filtered employment status: $($u.status), skipping)"
             $usersSkipped += $userId
             continue
         }
@@ -268,7 +268,7 @@ for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
     
     # Skip if user has no last name
     if ($u.last_name -eq $null) {
-        Write-Host "    (no last name, skipping)"
+        Write-Output "    (no last name, skipping)"
         $usersSkipped += $userId
         continue
     }
@@ -281,7 +281,7 @@ for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
     }
     # Skip if user has no pref name
     if ($ossUser.pref_name -eq $null -Or $ossUser.pref_name -eq "") {
-        Write-Host "    (no first/pref name, skipping)"
+        Write-Output "    (no first/pref name, skipping)"
         $usersSkipped += $userId
         continue
     }
@@ -297,7 +297,7 @@ for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
     $mgr = $zenefitsUsers | Where-Object url -eq $u.manager.url
     if ($mgr -ne $null) {
         $mgrsFound++
-        Write-Host "    (has manager)"
+        Write-Output "    (has manager)"
         # Check if we should use manager nickname
         if ($tryNicknames) {
             $ossUser.manager_pref_name = Get-Nickname -givenName $mgr.first_name -displayName ($mgr.preferred_name + " " + $mgr.last_name) -objType "manager"
@@ -339,27 +339,27 @@ for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
 
 
 # Stats
-Write-Host "$zenefitsUserCount users inspected"
-Write-Host "$mgrsFound manager assignments found"
+Write-Output "$zenefitsUserCount users inspected"
+Write-Output "$mgrsFound manager assignments found"
 if ($photoSource -ne "none") {
-    Write-Host "$photosFound user photos found"
+    Write-Output "$photosFound user photos found"
 }
 if ($tryNicknames) {
-    Write-Host "$nicknamesAssigned nicknames assigned to users"
+    Write-Output "$nicknamesAssigned nicknames assigned to users"
 }
 $numUsersSkipped = $usersSkipped.Count
-Write-Host "$numUsersSkipped users skipped"
+Write-Output "$numUsersSkipped users skipped"
 if ($numUsersSkipped -gt 0) {
-    Write-Host "User ids skipped: $usersSkipped"
+    Write-Output "User ids skipped: $usersSkipped"
 }
 $userCount = $ossUsersArray.Count
-Write-Host "$userCount users to import to OfficeSpace"
+Write-Output "$userCount users to import to OfficeSpace"
 # Import only if we meet the import threshold %
 if ($ossCurrentUserCount -gt 0) {
     $importPercentage = [math]::round(($userCount / $ossCurrentUserCount) * 100, 2)
-    Write-Host "importPercentage=$importPercentage, importThreshold=$importThreshold"
+    Write-Output "importPercentage=$importPercentage, importThreshold=$importThreshold"
     if ($importPercentage -lt $importThreshold) {
-        Write-Host "The number of users to import is too low to perform the import. Exiting."
+        Write-Output "The number of users to import is too low to perform the import. Exiting."
         Stop-Transcript
         Exit 1
     }
@@ -372,10 +372,10 @@ $endIdx       = $batchSize - 1
 $currentBatch = 1
 
 # Start communicating with OfficeSpace
-Write-Host "Preparing OfficeSpace for data push..."
+Write-Output "Preparing OfficeSpace for data push..."
 Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchStagingUrl -ContentType application/json -Method Delete -Headers $ossHeaders | Out-Null
 
-Write-Host "Sending records to $ossEmployeeBatchUrl"
+Write-Output "Sending records to $ossEmployeeBatchUrl"
 do {
     if ($endIdx -ge $userCount) {
         $endIdx = $userCount - 1
@@ -431,27 +431,27 @@ do {
         Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeBatchUrl -ContentType 'application/json; charset=utf-8' -Method Post -Body $JSONArrayUTF8 -Headers $ossHeaders -WarningAction SilentlyContinue -ErrorAction SilentlyContinue | Out-Null
         $startNum = $startIdx + 1
         $endNum = $endIdx + 1
-        Write-Host "$startNum-$endNum " -NoNewline
-        Write-Host "Done" -ForegroundColor Green
+        Write-Output "$startNum-$endNum " -NoNewline
+        Write-Output "Done" -ForegroundColor Green
     } Catch {
         $startNum = $startIdx + 1
         $endNum = $endIdx + 1
-        Write-Host "$startNum-$endNum " -NoNewline
-        Write-Host $_.Exception.Message -ForegroundColor Red
+        Write-Output "$startNum-$endNum " -NoNewline
+        Write-Output $_.Exception.Message -ForegroundColor Red
     }
     $startIdx += $batchSize
     $endIdx += $batchSize
     $currentBatch++
 } while ($currentBatch -le $totalBatches)
 
-Write-Host "Triggering migration..."
+Write-Output "Triggering migration..."
 $ossImportUrlPostBody = "Source=" + $source
 Invoke-WebRequest -UseBasicParsing -Uri $ossEmployeeImportUrl -Method Post -Body $ossImportUrlPostBody -Headers $ossHeaders | Out-Null
 
 # Timing
 $endTime = Get-Date
 $elapsedTime = $endTime - $startTime
-Write-Host "Completed in $($elapsedTime.TotalSeconds) seconds"
+Write-Output "Completed in $($elapsedTime.TotalSeconds) seconds"
 # Stop logging
 Stop-Transcript
 
