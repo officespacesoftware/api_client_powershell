@@ -4,6 +4,15 @@
 # According to Zenefits (https://developers.zenefits.com/docs/pagination), their service will return 20 records at a time, by default.
 # You can control this by adding the parameter "limit=xx". The maximum value allowed is 100.
 # Example: Return 50 people records at a time: https://api.zenefits.com/core/people?limit=50
+
+$onlyActive                 = $true                                                                         # When true, only request employees with the "active" status.
+                                                                                                            #   If false, we validate results against list of desired statuses.
+if($onlyActive){
+    $zenefitsPeopleUrl      = "https://api.zenefits.com/core/people?includes=department&status=active"      # Zenefits URL to access people data and department info
+} else {
+    $zenefitsPeopleUrl      = "https://api.zenefits.com/core/people?includes=department"                    # Zenefits URL to access people data and department info
+}
+
 $zenefitsPeopleUrl      = "https://api.zenefits.com/core/people?includes=department"    # Zenefits URL to access people data and department info
 $zenefitsApiKey         = "zenefitsApiKey123456"                                        # Zenefits API key
 $logFile                = "C:\ps\oss_import.txt"                                        # log file
@@ -12,6 +21,9 @@ $photosDir              = "C:\ps\photos2"                                       
 $ossApiKey              = "0123456789abcdef1011121314151617"                            # OfficeSpace API key
 $ossHostname            = "mycompany.officespacesoftware.com"                           # OfficeSpace instance hostname
 $tryNicknames           = $false                                                        # when $true, use preferred name over first name
+$employmentStatus       = @{active = "active"}                                          # Hash table with the accepted employmen statuses. The name should match a valid Zenefits status,
+                                                                                        #   per their API documentation: active, terminated, leave_of_absence, requested, setup, deleted.
+                                                                                        #   Example: $employmentStatus     = @{active = "active"; terminated = "terminated"}
 $importThreshold        = 60                                                            # minimum percentage of import count compared to existing OSS record count
                                                                                         #   If the user count to import is less than this threshold %, don't import.
 
@@ -244,6 +256,15 @@ for ($counter = 1; $counter -le $zenefitsUserCount; $counter++) {
     $u = $zenefitsUsers[$counter - 1]
     $userId = $u.id
     Write-Host "-> ${userId}:$($u.first_name) $($u.last_name) [$counter/$zenefitsUserCount]"
+    
+    # Skip if user doesn't have a desired employment status and onlyActive is false
+    if (-not $onlyActive) {
+        if (-not $employmentStatus[$u.status]){
+            Write-Host "    (undesired employment status: $($u.status), skipping)"
+            $usersSkipped += $userId
+            continue
+        }
+    }
     
     # Skip if user has no last name
     if ($u.last_name -eq $null) {
