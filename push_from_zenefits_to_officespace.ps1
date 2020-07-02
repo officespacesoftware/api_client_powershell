@@ -21,7 +21,7 @@ $photosDir              = "C:\ps\photos2"                                       
 $ossApiKey              = "0123456789abcdef1011121314151617"                            # OfficeSpace API key
 $ossHostname            = "mycompany.officespacesoftware.com"                           # OfficeSpace instance hostname
 $tryNicknames           = $false                                                        # when $true, use preferred name over first name
-$employmentStatus       = @{active = "active"}                                          # Hash table with the accepted employmen statuses. The name should match a valid Zenefits status,
+$employmentStatus       = @{active = "active"}                                          # Hash table with the accepted employment statuses. The name should match a valid Zenefits status,
                                                                                         #   per their API documentation: active, terminated, leave_of_absence, requested, setup, deleted.
                                                                                         #   Example: $employmentStatus     = @{active = "active"; terminated = "terminated"}
 $importThreshold        = 60                                                            # minimum percentage of import count compared to existing OSS record count
